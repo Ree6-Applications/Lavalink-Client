@@ -155,6 +155,7 @@ public class LavalinkPlayer implements IPlayer {
      * @see LavalinkPlayer#getFilters()
      */
     @Override
+    @Deprecated
     public void setVolume(int volume) {
         this.volume = Math.min(1000, Math.max(0, volume)); // Lavaplayer bounds
 
