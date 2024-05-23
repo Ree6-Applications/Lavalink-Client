@@ -14,6 +14,7 @@ import dev.arbjerg.lavalink.protocol.v4.Filters;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public class LavalinkPlayer implements IPlayer {
@@ -82,15 +83,15 @@ public class LavalinkPlayer implements IPlayer {
     public void stopTrack() {
         track = null;
 
-        link.updatePlayer((playerUpdateBuilder ->
-                playerUpdateBuilder.setTrack(null).setPaused(false))).subscribe();
+        link.createOrUpdatePlayer().subscribe((playerUpdateBuilder) ->
+                playerUpdateBuilder.setTrack(null).setPaused(false));
     }
 
     @Override
     public void setPaused(boolean pause) {
         if (pause == paused) return;
 
-        link.getPlayer().flatMap((player) -> player.setPaused(pause)).subscribe(x -> {
+        link.createOrUpdatePlayer().flatMap((player) -> player.setPaused(pause)).subscribe(x -> {
             if (pause) {
                 long timeDiff = System.currentTimeMillis() - updateTime;
                 position += timeDiff;
@@ -142,12 +143,9 @@ public class LavalinkPlayer implements IPlayer {
         if (getPlayingTrack() == null) throw new IllegalStateException("Not currently playing anything");
         if (!getPlayingTrack().isSeekable()) throw new IllegalStateException("Track cannot be seeked");
 
-        JSONObject json = new JSONObject();
-        json.put("op", "seek");
-        json.put("guildId", link.getGuildId());
-        json.put("position", position);
-        //noinspection ConstantConditions
-        link.getNode(true).send(json.toString());
+        link.createOrUpdatePlayer().subscribe(lavalinkPlayer -> {
+            lavalinkPlayer.setPosition(position);
+        });
         
         this.position = position;
     }
@@ -158,40 +156,26 @@ public class LavalinkPlayer implements IPlayer {
      */
     @Override
     public void setVolume(int volume) {
-        volume = Math.min(1000, Math.max(0, volume)); // Lavaplayer bounds
-        this.volume = volume;
+        this.volume = Math.min(1000, Math.max(0, volume)); // Lavaplayer bounds
 
-        LavalinkSocket node = link.getNode(false);
-        if (node == null) return;
-
-        JSONObject json = new JSONObject();
-        json.put("op", "volume");
-        json.put("guildId", link.getGuildId());
-        json.put("volume", volume);
-        node.send(json.toString());
+        link.createOrUpdatePlayer().subscribe(player -> player.setVolume(this.volume));
     }
 
     @Override
     public int getVolume() {
-        return (int) (getFilters().getVolume() * 100);
+        return Objects.requireNonNull(link.createOrUpdatePlayer().block()).getVolume();
     }
 
     /**
      * @return a builder that allows setting filters such as volume, an equalizer, etc.
-     * @see Filters#commit()
      */
     @SuppressWarnings({"WeakerAccess", "unused"})
-    @Nonnull
-    @CheckReturnValue
     public Filters getFilters() {
-        if (filters == null) filters = new Filters(this, this::onCommit);
+        if (filters == null) {
+            filters = new Filters();
+            link.createOrUpdatePlayer().setFilters(filters).subscribe();
+        }
         return filters;
-    }
-
-    public void provideState(JSONObject json) {
-        updateTime = json.getLong("time");
-        position = json.optLong("position", 0);
-        connected = json.optBoolean("connected", true);
     }
 
     @Override
@@ -215,106 +199,6 @@ public class LavalinkPlayer implements IPlayer {
     @SuppressWarnings({"unused"})
     public Link getLink() {
         return link;
-    }
-
-    private void onCommit() {
-        LavalinkSocket node = link.getNode(false);
-        if (node == null) return;
-
-        JSONObject json = new JSONObject();
-        json.put("op", "filters");
-        json.put("guildId", link.getGuildId());
-
-        // Volume
-        json.put("volume", filters.getVolume());
-
-        // Equalizer
-        JSONArray bands = new JSONArray();
-        int i = -1;
-        for (float f : filters.getBands()) {
-            i++;
-            if (f == 0.0f) continue;
-            JSONObject obj = new JSONObject();
-            obj.put("band", i);
-            obj.put("gain", f);
-            bands.put(obj);
-        }
-        if (bands.length() > 0) json.put("equalizer", bands);
-
-        Timescale timescale = filters.getTimescale();
-        if (timescale != null) {
-            JSONObject obj = new JSONObject();
-            obj.put("speed", timescale.getSpeed());
-            obj.put("pitch", timescale.getPitch());
-            obj.put("rate", timescale.getRate());
-            json.put("timescale", obj);
-        }
-
-        Karaoke karaoke = filters.getKaraoke();
-        if (karaoke != null) {
-            JSONObject obj = new JSONObject();
-            obj.put("level", karaoke.getLevel());
-            obj.put("monoLevel", karaoke.getMonoLevel());
-            obj.put("filterBand", karaoke.getFilterBand());
-            obj.put("filterWidth", karaoke.getFilterWidth());
-            json.put("karaoke", obj);
-        }
-
-        Tremolo tremolo = filters.getTremolo();
-        if (tremolo != null) {
-            JSONObject obj = new JSONObject();
-            obj.put("frequency", tremolo.getFrequency());
-            obj.put("depth", tremolo.getDepth());
-            json.put("tremolo", obj);
-        }
-
-        Vibrato vibrato = filters.getVibrato();
-        if (vibrato != null) {
-            JSONObject obj = new JSONObject();
-            obj.put("frequency", vibrato.getFrequency());
-            obj.put("depth", vibrato.getDepth());
-            json.put("vibrato", obj);
-        }
-
-        Rotation rotation = filters.getRotation();
-        if (rotation != null) {
-            JSONObject obj = new JSONObject();
-            obj.put("rotationHz", rotation.getFrequency());
-            json.put("rotation", obj);
-        }
-
-        Distortion distortion = filters.getDistortion();
-        if (distortion != null) {
-            JSONObject obj = new JSONObject();
-            obj.put("sinOffset", distortion.getSinOffset());
-            obj.put("sinScale", distortion.getSinScale());
-            obj.put("cosOffset", distortion.getCosOffset());
-            obj.put("cosScale", distortion.getCosScale());
-            obj.put("tanOffset", distortion.getTanOffset());
-            obj.put("tanScale", distortion.getTanScale());
-            obj.put("offset", distortion.getOffset());
-            obj.put("scale", distortion.getScale());
-            json.put("distortion", obj);
-        }
-
-        ChannelMix channelMix = filters.getChannelMix();
-        if (channelMix != null) {
-            JSONObject obj = new JSONObject();
-            obj.put("leftToLeft", channelMix.getLeftToLeft());
-            obj.put("leftToRight", channelMix.getLeftToRight());
-            obj.put("rightToLeft", channelMix.getRightToLeft());
-            obj.put("rightToRight", channelMix.getRightToRight());
-            json.put("channelMix", obj);
-        }
-
-        LowPass lowPass = filters.getLowPass();
-        if (lowPass != null) {
-            JSONObject obj = new JSONObject();
-            obj.put("smoothing", lowPass.getSmoothing());
-            json.put("lowPass", obj);
-        }
-
-        node.send(json.toString());
     }
 
     /**
