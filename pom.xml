@@ -9,14 +9,14 @@
 
     <repositories>
         <repository>
+            <id>ll-snapshots</id>
+            <name>Lavalink Snapshots</name>
+            <url>https://maven.lavalink.dev/snapshots</url>
+        </repository>
+        <repository>
             <id>ll-releases</id>
             <name>Lavalink Releases</name>
             <url>https://maven.lavalink.dev/releases</url>
-        </repository>
-        <repository>
-            <id>lavalink</id>
-            <name>LavaLink Devs</name>
-            <url>https://maven.lavalink.dev/snapshots</url>
         </repository>
     </repositories>
 
