@@ -203,7 +203,7 @@ public class LavalinkPlayer implements IPlayer {
     }
 
     /**
-     * @return Whether or not the Lavalink player is connected to the gateway
+     * @return Whether the Lavalink player is connected to the gateway
      */
     public boolean isConnected() {
         return connected;
