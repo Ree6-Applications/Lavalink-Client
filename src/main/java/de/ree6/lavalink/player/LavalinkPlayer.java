@@ -10,9 +10,9 @@ import de.ree6.lavalink.player.event.PlayerEvent;
 import de.ree6.lavalink.player.event.PlayerPauseEvent;
 import de.ree6.lavalink.player.event.PlayerResumeEvent;
 import dev.arbjerg.lavalink.client.Link;
+import dev.arbjerg.lavalink.client.player.TrackUpdateBuilder;
 import dev.arbjerg.lavalink.protocol.v4.Filters;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -70,9 +70,11 @@ public class LavalinkPlayer implements IPlayer {
         try {
             position = track.getPosition();
             TrackData trackData = track.getUserData(TrackData.class);
+            var updatedTracker = new TrackUpdateBuilder()
+                    .setIdentifier(track.getIdentifier())
+                    .setUserData(trackData);
 
-            // TODO:: play track.
-
+            link.createOrUpdatePlayer().subscribe((player) -> player.updateTrack(updatedTracker.build()));
             return true;
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -83,8 +85,7 @@ public class LavalinkPlayer implements IPlayer {
     public void stopTrack() {
         track = null;
 
-        link.createOrUpdatePlayer().subscribe((playerUpdateBuilder) ->
-                playerUpdateBuilder.setTrack(null).setPaused(false));
+        link.createOrUpdatePlayer().subscribe(dev.arbjerg.lavalink.client.player.LavalinkPlayer::stopTrack);
     }
 
     @Override
